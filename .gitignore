@@ -1,0 +1,24 @@
+
+# Compiled executable
+filecompress
+
+# Generated compression and decompression files
+*.fcz
+big.out
+samples/big.txt
+samples/small.txt
+samples/small.out
+samples/small.fcz
+samples/empty.bin
+samples/random.bin
+samples/text.txt
+
+# Backup files
+*.bak
+
+# Object files
+*.o
+
+# Temporary files
+*.tmp
+
