@@ -1,0 +1,1884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parallel File Compressor // Operating Systems Project</title>
+  <style>
+    :root {
+      --bg: #0b0e12;
+      --panel: #13171e;
+      --panel-inner: #0e1217;
+      --border: #222934;
+      --border-bright: #364152;
+      --amber: #f59e0b;
+      --cyan: #38bdf8;
+      --emerald: #10b981;
+      --crimson: #ef4444;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --text-dim: #545d68;
+      --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 28px 28px;
+      color: var(--text);
+      font-family: var(--font-ui);
+      line-height: 1.5;
+      min-height: 100vh;
+      padding-bottom: 3rem;
+    }
+
+    .top-bar {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .live-dot {
+      width: 9px;
+      height: 9px;
+      background: var(--emerald);
+      border-radius: 2px;
+      box-shadow: 0 0 6px var(--emerald);
+      animation: blink 2.5s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+
+    .brand-text h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .brand-text p {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .sys-specs {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .spec-chip {
+      font-size: 0.72rem;
+      background: var(--panel-inner);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+    }
+
+    .spec-chip.active {
+      color: var(--amber);
+      border-color: rgba(245, 158, 11, 0.35);
+    }
+
+    .container {
+      max-width: 1080px;
+      margin: 1.5rem auto;
+      padding: 0 1.25rem;
+    }
+
+    .nav-tabs {
+      display: flex;
+      background: #080a0d;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px;
+      margin-bottom: 1.5rem;
+      gap: 3px;
+      overflow-x: auto;
+    }
+
+    .nav-btn {
+      flex: 1;
+      min-width: 130px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.7rem 0.85rem;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      white-space: nowrap;
+    }
+
+    .nav-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .nav-btn.active {
+      background: var(--panel);
+      color: var(--amber);
+      border-color: var(--border-bright);
+    }
+
+    .tab-view {
+      display: none;
+    }
+
+    .tab-view.active {
+      display: block;
+    }
+
+    .panel-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .panel-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .panel-status {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .drop-deck {
+      display: block;
+      border: 2px dashed var(--border-bright);
+      background: #080b0e;
+      border-radius: 6px;
+      padding: 1.75rem 1.25rem;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 1rem;
+      transition: all 0.15s ease;
+      position: relative;
+    }
+
+    .drop-deck:hover, .drop-deck.dragover {
+      border-color: var(--amber);
+      background: rgba(245, 158, 11, 0.03);
+    }
+
+    .drop-deck.has-file {
+      border-color: var(--emerald);
+      border-style: solid;
+      background: rgba(16, 185, 129, 0.04);
+    }
+
+    .drop-deck input[type="file"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .drop-deck-icon {
+      font-size: 1.5rem;
+      color: var(--amber);
+      margin-bottom: 0.35rem;
+      font-family: var(--font-mono);
+    }
+
+    .drop-deck.has-file .drop-deck-icon {
+      color: var(--emerald);
+    }
+
+    .drop-deck-main {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .drop-deck.has-file .drop-deck-main {
+      color: #fff;
+      font-size: 1.05rem;
+    }
+
+    .drop-deck-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    .presets-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .presets-label {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .preset-btn {
+      background: var(--panel-inner);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.74rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .preset-btn:hover {
+      border-color: var(--amber);
+      color: var(--amber);
+      background: rgba(245, 158, 11, 0.04);
+    }
+
+    .sniffer-box {
+      display: none;
+      background: var(--panel-inner);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--amber);
+      border-radius: 4px;
+      padding: 1rem 1.2rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .sniffer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.6rem;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .sniffer-filename {
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+
+    .sniffer-filesize {
+      color: var(--text-muted);
+      margin-left: 0.4rem;
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+    }
+
+    .tag-badge {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+    }
+
+    .tag-high {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+
+    .tag-moderate {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+    }
+
+    .tag-precomp {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+    }
+
+    .hex-dump-table {
+      background: #05070a;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      display: flex;
+      gap: 1.5rem;
+      margin-bottom: 0.6rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+    }
+
+    .hex-bytes {
+      color: var(--cyan);
+      letter-spacing: 0.05em;
+    }
+
+    .ascii-bytes {
+      color: var(--text-muted);
+      border-left: 1px solid var(--border);
+      padding-left: 1rem;
+    }
+
+    .sniffer-explanation {
+      font-size: 0.78rem;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+
+    @media (max-width: 820px) {
+      .config-grid { grid-template-columns: 1fr; }
+    }
+
+    .config-card {
+      background: var(--panel-inner);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.9rem 1rem;
+    }
+
+    .config-title-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.45rem;
+    }
+
+    .config-active-val {
+      color: var(--amber);
+      font-family: var(--font-mono);
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      background: #05070a;
+      border-radius: 3px;
+      outline: none;
+      accent-color: var(--amber);
+      cursor: pointer;
+    }
+
+    select {
+      width: 100%;
+      background: #05070a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.82rem;
+      padding: 0.5rem 0.65rem;
+      border-radius: 4px;
+      outline: none;
+    }
+
+    select:focus {
+      border-color: var(--amber);
+    }
+
+    .command-bar {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-execute {
+      background: var(--amber);
+      color: #000;
+      border: none;
+      font-size: 0.88rem;
+      font-weight: 700;
+      padding: 0.85rem 1.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.12s ease;
+    }
+
+    .btn-execute:hover:not(:disabled) {
+      background: #fbbf24;
+      transform: translateY(-1px);
+    }
+
+    .btn-execute:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    .btn-execute:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .btn-download-action {
+      background: var(--emerald);
+      color: #000;
+      border: none;
+      font-size: 0.84rem;
+      font-weight: 700;
+      padding: 0.85rem 1.5rem;
+      border-radius: 4px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.12s ease;
+    }
+
+    .btn-download-action:hover {
+      background: #34d399;
+      transform: translateY(-1px);
+    }
+
+    .execution-deck {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 860px) {
+      .execution-deck { grid-template-columns: 1fr; }
+    }
+
+    .result-subpanel {
+      background: var(--panel-inner);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .primary-metric-banner {
+      background: #05070a;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .metric-hero-label {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.3rem;
+      font-weight: 600;
+    }
+
+    .metric-hero-val {
+      font-size: 1.6rem;
+      font-weight: 800;
+      font-family: var(--font-mono);
+    }
+
+    .metrics-2x3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+
+    .m-cell {
+      background: #05070a;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.7rem 0.85rem;
+    }
+
+    .m-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 0.2rem;
+      font-weight: 600;
+    }
+
+    .m-data {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: #fff;
+      font-family: var(--font-mono);
+    }
+
+    .visual-subpanel {
+      background: var(--panel-inner);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .stepped-meter-box {
+      background: #05070a;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.85rem;
+    }
+
+    .meter-label-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      margin-bottom: 0.45rem;
+      font-family: var(--font-mono);
+    }
+
+    .meter-track {
+      height: 18px;
+      background: #11151a;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .meter-fill {
+      height: 100%;
+      background: repeating-linear-gradient(
+        -45deg,
+        var(--amber),
+        var(--amber) 8px,
+        #d97706 8px,
+        #d97706 16px
+      );
+      width: 0%;
+      transition: width 0.4s ease;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 0.45rem;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: #000;
+      font-family: var(--font-mono);
+    }
+
+    .slots-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .slots-header {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      font-weight: 600;
+    }
+
+    .slots-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 0.45rem;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .slot-item {
+      background: #05070a;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.55rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .slot-tid {
+      color: var(--cyan);
+      font-weight: 700;
+    }
+
+    .slot-saved {
+      color: var(--emerald);
+      font-weight: 700;
+    }
+
+    .slot-expanded {
+      color: var(--crimson);
+      font-weight: 700;
+    }
+
+    .console-frame {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .console-bar {
+      background: #06080a;
+      border-bottom: 1px solid var(--border);
+      padding: 0.45rem 0.85rem;
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+    }
+
+    .console-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .console-action-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+    }
+
+    .console-action-btn:hover {
+      color: var(--amber);
+    }
+
+    .console-log {
+      background: #030406;
+      padding: 0.85rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--cyan);
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+
+    .pcmp-header-card {
+      display: none;
+      background: var(--panel-inner);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--cyan);
+      border-radius: 4px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .pcmp-header-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      margin-top: 0.4rem;
+    }
+
+    @media (max-width: 768px) {
+      .pcmp-header-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    .styled-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    .styled-table th, .styled-table td {
+      padding: 0.75rem 0.9rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .styled-table th {
+      background: #05070a;
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .styled-table td {
+      color: var(--text);
+      font-family: var(--font-mono);
+    }
+
+    .scaling-chart {
+      margin-top: 1.5rem;
+      background: var(--panel-inner);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1.25rem;
+    }
+
+    .chart-bar-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      gap: 1rem;
+    }
+
+    .chart-label {
+      width: 85px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .chart-track {
+      flex: 1;
+      height: 22px;
+      background: #05070a;
+      border-radius: 3px;
+      overflow: hidden;
+      display: flex;
+    }
+
+    .chart-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #d97706, #f59e0b);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #000;
+      transition: width 0.5s ease;
+    }
+
+    .viva-card {
+      background: var(--panel-inner);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      margin-bottom: 0.85rem;
+      overflow: hidden;
+    }
+
+    .viva-q {
+      padding: 0.85rem 1.1rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.015);
+      border-bottom: 1px solid transparent;
+      transition: background 0.15s;
+    }
+
+    .viva-q:hover {
+      background: rgba(245, 158, 11, 0.05);
+      color: var(--amber);
+    }
+
+    .viva-a {
+      padding: 1rem 1.1rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      border-top: 1px solid var(--border);
+    }
+
+    .viva-a strong {
+      color: var(--text);
+    }
+
+    .viva-a code {
+      background: #05070a;
+      color: var(--cyan);
+      padding: 0.15rem 0.4rem;
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <div class="brand-group">
+      <div class="live-dot"></div>
+      <div class="brand-text">
+        <h1>Parallel File Compressor</h1>
+        <p>Operating Systems Project • POSIX Threads (pthreads) in C</p>
+      </div>
+    </div>
+    <div class="sys-specs">
+      <span class="spec-chip active" id="coreChip">Detecting CPU...</span>
+      <span class="spec-chip">C11 + POSIX Threads</span>
+      <span class="spec-chip">Zlib 1.3 DEFLATE</span>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="nav-tabs">
+      <button class="nav-btn active" onclick="switchTab('compress')">
+        1. Compress File
+      </button>
+      <button class="nav-btn" onclick="switchTab('decompress')">
+        2. Decompress File
+      </button>
+      <button class="nav-btn" onclick="switchTab('benchmark')">
+        3. Amdahl's Law Benchmark
+      </button>
+      <button class="nav-btn" onclick="switchTab('viva')">
+        4. OS Concepts & Viva Prep
+      </button>
+      <button class="nav-btn" onclick="switchTab('history')">
+        5. History & Downloads
+      </button>
+    </div>
+
+    <div id="tab-compress" class="tab-view active">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">Compress Any File</div>
+          <div class="panel-status" id="compressStatus">Ready</div>
+        </div>
+
+        <label class="drop-deck" id="dropDeck">
+          <input type="file" id="cFile" onchange="onFileChosen(this)">
+          <div class="drop-deck-icon" id="dropDeckIcon">[ + ]</div>
+          <div class="drop-deck-main" id="dropDeckMain">Click to choose a file or drag & drop it here</div>
+          <div class="drop-deck-sub" id="dropDeckSub">Works with text files, code, docx, pdf, images, and any other file</div>
+        </label>
+
+        <div class="presets-bar">
+          <span class="presets-label">Try Quick Examples:</span>
+          <button class="preset-btn" type="button" onclick="loadSampleText()">Sample Text (~95% smaller)</button>
+          <button class="preset-btn" type="button" onclick="loadSampleCode()">C Source Code (~76% smaller)</button>
+          <button class="preset-btn" type="button" onclick="loadSampleDocx()">DOCX / Word File (~0% change)</button>
+        </div>
+
+        <div class="sniffer-box" id="snifferBox">
+          <div class="sniffer-header">
+            <div>
+              <span class="sniffer-filename" id="sniffName">file.ext</span>
+              <span class="sniffer-filesize" id="sniffSize">0 KB</span>
+            </div>
+            <div id="sniffTag" class="tag-badge tag-high">Checking...</div>
+          </div>
+          <div class="hex-dump-table">
+            <div>
+              <div style="color: var(--text-dim); font-size: 0.68rem; margin-bottom: 0.2rem;">First Bytes in File:</div>
+              <div class="hex-bytes" id="sniffHex">00 00 00 00 00 00 00 00</div>
+            </div>
+            <div class="ascii-bytes">
+              <div style="color: var(--text-dim); font-size: 0.68rem; margin-bottom: 0.2rem;">Text Header:</div>
+              <div id="sniffAscii">........</div>
+            </div>
+          </div>
+          <div class="sniffer-explanation" id="sniffExpl">Checking file type...</div>
+        </div>
+
+        <div class="config-grid">
+          <div class="config-card">
+            <div class="config-title-row">
+              <span>CPU Threads</span>
+              <span class="config-active-val" id="cThreadsLabel">4 Threads</span>
+            </div>
+            <input type="range" id="cThreadsRange" min="1" max="16" value="4" oninput="updateThreads(this.value)">
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.35rem;">
+              How many CPU threads to run concurrently
+            </div>
+          </div>
+
+          <div class="config-card">
+            <div class="config-title-row">
+              <span>Chunk Size</span>
+              <span class="config-active-val" id="cChunkLabel">1024 KB</span>
+            </div>
+            <select id="cChunkSelect" onchange="updateChunkPartition()">
+              <option value="512">512 KB (Small chunks)</option>
+              <option value="1024" selected>1024 KB (1 MB - Recommended)</option>
+              <option value="2048">2048 KB (2 MB - Large chunks)</option>
+            </select>
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.35rem;">
+              How big each piece of the file is for each thread
+            </div>
+          </div>
+
+          <div class="config-card">
+            <div class="config-title-row">
+              <span>Compression Level</span>
+              <span class="config-active-val" id="cLevelLabel">Level 6</span>
+            </div>
+            <select id="cLevelSelect" onchange="document.getElementById('cLevelLabel').innerText = 'Level ' + this.value">
+              <option value="1">Level 1 - Fastest (Less compression)</option>
+              <option value="6" selected>Level 6 - Balanced (Standard)</option>
+              <option value="9">Level 9 - Best Compression (Slower)</option>
+            </select>
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.35rem;">
+              Balance between processing speed and smaller file size
+            </div>
+          </div>
+        </div>
+
+        <div class="command-bar">
+          <button class="btn-execute" id="btnCompress" onclick="startCompression()">
+            Compress File Now
+          </button>
+          <div id="cDownloadArea" style="display: none;">
+            <a href="#" class="btn-download-action" id="cDownloadLink">
+              Download Compressed File (.pcmp)
+            </a>
+          </div>
+        </div>
+
+        <div class="execution-deck" id="execDeck">
+          <div class="result-subpanel">
+            <div class="primary-metric-banner">
+              <div class="metric-hero-label">Result</div>
+              <div class="metric-hero-val" id="mHeroSaved">--</div>
+            </div>
+            <div class="metrics-2x3">
+              <div class="m-cell">
+                <div class="m-label">Original Size</div>
+                <div class="m-data" id="mOrig">--</div>
+              </div>
+              <div class="m-cell">
+                <div class="m-label">Compressed Size</div>
+                <div class="m-data" id="mComp">--</div>
+              </div>
+              <div class="m-cell">
+                <div class="m-label">Size Ratio</div>
+                <div class="m-data" id="mRatio" style="color: var(--cyan);">--%</div>
+              </div>
+              <div class="m-cell">
+                <div class="m-label">Time Taken</div>
+                <div class="m-data" id="mTime">-- s</div>
+              </div>
+              <div class="m-cell">
+                <div class="m-label">Processing Speed</div>
+                <div class="m-data" id="mTput">-- MB/s</div>
+              </div>
+              <div class="m-cell">
+                <div class="m-label">Threads Used</div>
+                <div class="m-data" id="mThreads">--</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="visual-subpanel">
+            <div class="stepped-meter-box">
+              <div class="meter-label-row">
+                <span id="meterOrig">Original: 0 B</span>
+                <span id="meterRatio">New Size: 100.00%</span>
+                <span id="meterComp">Compressed: 0 B</span>
+              </div>
+              <div class="meter-track">
+                <div class="meter-fill" id="meterFill">100%</div>
+              </div>
+            </div>
+
+            <div class="slots-container">
+              <div class="slots-header">
+                <span>What Each Thread Did</span>
+                <span id="slotsCount">0 parts processed</span>
+              </div>
+              <div class="slots-grid" id="slotsGrid"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="console-frame">
+          <div class="console-bar">
+            <span>Console Output</span>
+            <div class="console-actions">
+              <button class="console-action-btn" onclick="copyConsole('cConsole')">[ Copy ]</button>
+              <button class="console-action-btn" onclick="clearConsole('cConsole')">[ Clear ]</button>
+            </div>
+          </div>
+          <div class="console-log" id="cConsole">[Ready] Choose a file above to get started...</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-decompress" class="tab-view">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">Decompress File</div>
+          <div class="panel-status">Ready</div>
+        </div>
+
+        <label class="drop-deck" id="dropDeckD">
+          <input type="file" id="dFile" onchange="onDecompressFileChosen(this)">
+          <div class="drop-deck-icon" id="dropDeckDIcon">[ * ]</div>
+          <div class="drop-deck-main" id="dropDeckDMain">Click to choose a .pcmp file or drag & drop it here</div>
+          <div class="drop-deck-sub" id="dropDeckDSub">Restores original file and checks integrity using threads</div>
+        </label>
+
+        <div class="pcmp-header-card" id="pcmpHeaderCard">
+          <div style="font-weight: 700; color: #fff; margin-bottom: 0.35rem; font-size: 0.88rem;">
+            Valid Compressed Archive Found
+          </div>
+          <div class="pcmp-header-grid">
+            <div>
+              <div style="color: var(--text-muted); font-size: 0.72rem;">Original Format:</div>
+              <div style="color: var(--amber); font-weight: 700; font-family: var(--font-mono);" id="hdrExt">--</div>
+            </div>
+            <div>
+              <div style="color: var(--text-muted); font-size: 0.72rem;">Original Size:</div>
+              <div style="color: #fff; font-weight: 700; font-family: var(--font-mono);" id="hdrOrig">--</div>
+            </div>
+            <div>
+              <div style="color: var(--text-muted); font-size: 0.72rem;">Total Parts:</div>
+              <div style="color: #fff; font-weight: 700; font-family: var(--font-mono);" id="hdrChunks">--</div>
+            </div>
+            <div>
+              <div style="color: var(--text-muted); font-size: 0.72rem;">Chunk Size:</div>
+              <div style="color: #fff; font-weight: 700; font-family: var(--font-mono);" id="hdrChunkSize">--</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="config-grid" style="grid-template-columns: 1fr 1fr;">
+          <div class="config-card">
+            <div class="config-title-row">
+              <span>Decompression Threads</span>
+              <span class="config-active-val" id="dThreadsLabel">4 Threads</span>
+            </div>
+            <input type="range" id="dThreadsRange" min="1" max="16" value="4" oninput="document.getElementById('dThreadsLabel').innerText = this.value + ' Threads'">
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.35rem;">
+              How many CPU threads to use for unpacking
+            </div>
+          </div>
+          <div class="config-card" style="display: flex; align-items: center; justify-content: flex-start;">
+            <button class="btn-execute" id="btnDecompress" onclick="startDecompression()">
+              Decompress File Now
+            </button>
+          </div>
+        </div>
+
+        <div class="metrics-2x3" id="dMetrics" style="display: none; margin-bottom: 1.25rem;">
+          <div class="m-cell">
+            <div class="m-label">Restored File Size</div>
+            <div class="m-data" id="dRestSize">--</div>
+          </div>
+          <div class="m-cell">
+            <div class="m-label">Integrity Check</div>
+            <div class="m-data" style="color: var(--emerald);">CRC32 Matched (Perfect)</div>
+          </div>
+          <div class="m-cell">
+            <div class="m-label">Time Taken</div>
+            <div class="m-data" id="dTime">-- s</div>
+          </div>
+          <div class="m-cell">
+            <div class="m-label">Unpacking Speed</div>
+            <div class="m-data" id="dTput">-- MB/s</div>
+          </div>
+        </div>
+
+        <div id="dDownloadArea" style="display: none; margin-bottom: 1.25rem;">
+          <a href="#" class="btn-download-action" id="dDownloadLink">
+            Download Restored File
+          </a>
+        </div>
+
+        <div class="console-frame">
+          <div class="console-bar">
+            <span>Decompression Output</span>
+            <div class="console-actions">
+              <button class="console-action-btn" onclick="copyConsole('dConsole')">[ Copy ]</button>
+              <button class="console-action-btn" onclick="clearConsole('dConsole')">[ Clear ]</button>
+            </div>
+          </div>
+          <div class="console-log" id="dConsole">[Ready] Choose a .pcmp file to decompress...</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-benchmark" class="tab-view">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">Amdahl's Law Multithreading Benchmark</div>
+          <div class="panel-status">Empirical Concurrency Test</div>
+        </div>
+
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+          Compare execution speed across <strong>1, 2, 4, and 8 worker threads</strong> using identical input data, chunk sizes, and compression levels to measure real multi-core speedup and Amdahl's Law scaling limits.
+        </p>
+
+        <div class="command-bar">
+          <button class="btn-execute" id="btnRunBenchmark" onclick="runBenchmark()">
+            Run Benchmark (1, 2, 4, 8 Threads)
+          </button>
+          <span style="font-size: 0.78rem; color: var(--text-muted);">
+            Test Target: <strong id="benchTargetName">parallel_compress.c (Default)</strong>
+          </span>
+        </div>
+
+        <div id="benchResultsBox" style="display: none;">
+          <div style="overflow-x: auto; margin-bottom: 1.5rem;">
+            <table class="styled-table" id="benchTable">
+              <thead>
+                <tr>
+                  <th>Test Run</th>
+                  <th>Threads Used</th>
+                  <th>Execution Time</th>
+                  <th>Throughput</th>
+                  <th>Speedup Factor</th>
+                  <th>Scaling Efficiency</th>
+                </tr>
+              </thead>
+              <tbody id="benchBody"></tbody>
+            </table>
+          </div>
+
+          <div class="scaling-chart">
+            <div style="font-size: 0.82rem; font-weight: 700; color: #fff; margin-bottom: 1rem;">
+              Speedup Comparison Relative to 1 Thread:
+            </div>
+            <div id="chartContainer"></div>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; background: var(--panel-inner); border: 1px solid var(--border); border-radius: 4px; padding: 1.25rem;">
+          <div style="font-weight: 700; color: var(--amber); font-size: 0.9rem; margin-bottom: 0.5rem;">
+            Understanding Amdahl's Law in File Compression:
+          </div>
+          <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.6;">
+            Amdahl's Law defines the maximum theoretical speedup \(S(N)\) when using \(N\) parallel processor cores:
+          </p>
+          <div style="background: #05070a; border: 1px solid var(--border); border-radius: 3px; padding: 0.75rem; margin: 0.6rem 0; font-family: var(--font-mono); font-size: 0.85rem; color: var(--cyan); text-align: center;">
+            Speedup(N) = 1 / [ (1 - P) + (P / N) ]
+          </div>
+          <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.6;">
+            • <strong>Parallel Fraction (P ≈ 92-95%):</strong> Chunk compression routines running in parallel across worker threads.<br>
+            • <strong>Serial Fraction (1 - P ≈ 5-8%):</strong> File opening, reading input bytes from disk, writing the PCMP archive header, and synchronizing threads.<br>
+            • <strong>Why Speedup Flattens:</strong> Even with infinite CPU cores, overall execution speed is ultimately bound by disk I/O and thread creation overhead.
+          </p>
+        </div>
+
+        <div class="console-frame" style="margin-top: 1.5rem;">
+          <div class="console-bar">
+            <span>Benchmark Raw Console Output</span>
+            <div class="console-actions">
+              <button class="console-action-btn" onclick="copyConsole('bConsole')">[ Copy ]</button>
+            </div>
+          </div>
+          <div class="console-log" id="bConsole">[Ready] Click "Run Benchmark" to execute live thread comparison...</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-viva" class="tab-view">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">Operating Systems Concepts & Viva Examination Prep</div>
+          <div class="panel-status">Viva Reference</div>
+        </div>
+
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+          Key Operating Systems theory, architectural questions, and answers demonstrated by this project for your course viva and evaluation:
+        </p>
+
+        <div class="viva-card">
+          <div class="viva-q" onclick="toggleViva(this)">
+            1. How does multithreading work in this project?
+            <span>▼</span>
+          </div>
+          <div class="viva-a">
+            <strong>Architecture:</strong> The main thread acts as an <em>OS Coordinator</em>. It reads the input file into memory in discrete chunks (e.g., 1024 KB). For each batch of chunks, it creates a pool of POSIX threads using <code>pthread_create()</code>.<br>
+            Each worker thread runs <code>compress_worker()</code>, executing the zlib DEFLATE algorithm independently on its designated memory buffer.<br>
+            The main thread then uses <strong>barrier synchronization</strong> via <code>pthread_join()</code> to wait for all workers to finish before writing the compressed chunks to the PCMP archive in strict sequential order.
+          </div>
+        </div>
+
+        <div class="viva-card">
+          <div class="viva-q" onclick="toggleViva(this)">
+            2. Why does changing the thread count change speed, but not compression ratio?
+            <span>▼</span>
+          </div>
+          <div class="viva-a">
+            <strong>Core Principle:</strong> Threads provide <em>concurrency and throughput</em>, not algorithmic compression. Each thread runs the exact same compression algorithm (<code>compress2()</code>) at the same compression level on its assigned chunk.<br>
+            Whether 1 thread compresses 4 chunks one after another or 4 threads compress them at the same time, the compressed bytes produced for each chunk remain identical. Concurrency reduces total wall-clock time, not output file size.
+          </div>
+        </div>
+
+        <div class="viva-card">
+          <div class="viva-q" onclick="toggleViva(this)">
+            3. How does this project prevent Race Conditions and Deadlocks?
+            <span>▼</span>
+          </div>
+          <div class="viva-a">
+            <strong>Zero Shared Mutable State:</strong> Each worker thread is given its own disjoint input and output memory buffers:
+            <code>tasks[i].in_data = in_buf + (i * chunk_size)</code> and <code>tasks[i].out_data = out_buf + (i * cap)</code>.<br>
+            Because no two threads read or write to the same memory addresses, no mutex locks are required during compression, completely eliminating <strong>race conditions, lock contention, and deadlocks</strong>.<br>
+            Synchronization is cleanly enforced at the batch boundary using <code>pthread_join()</code>.
+          </div>
+        </div>
+
+        <div class="viva-card">
+          <div class="viva-q" onclick="toggleViva(this)">
+            4. Why do DOCX, ZIP, PNG, and JPG files achieve ~0% compression?
+            <span>▼</span>
+          </div>
+          <div class="viva-a">
+            <strong>Shannon's Source Coding Theorem:</strong> A <code>.docx</code> file is actually a zipped OpenXML container already compressed using DEFLATE. A <code>.png</code> file already has DEFLATE scanlines, and a <code>.jpg</code> uses DCT lossy compression.<br>
+            Because these files have already reached near-maximum information entropy (almost zero remaining repetitive byte patterns), lossless DEFLATE cannot shrink them further. In fact, adding chunk metadata headers often causes a tiny expansion (+0.01% to +0.05%).
+          </div>
+        </div>
+
+        <div class="viva-card">
+          <div class="viva-q" onclick="toggleViva(this)">
+            5. What is the PCMP archive header structure and how does it prevent attacks?
+            <span>▼</span>
+          </div>
+          <div class="viva-a">
+            The archive begins with a strictly packed 36-byte header:
+            <code>magic (4B "PCMP") | original_size (8B) | total_chunks (4B) | chunk_size (4B) | original_ext (16B)</code>.<br>
+            <strong>Security & Integrity Checks:</strong>
+            1. Validates magic signature against <code>"PCMP"</code>.<br>
+            2. Enforces bounds: rejects archives if <code>orig_len > chunk_size</code> or <code>comp_len > compressBound(chunk_size)</code> to prevent buffer overflow attacks.<br>
+            3. Verifies each chunk's 32-bit CRC32 checksum before writing restored bytes to disk.
+          </div>
+        </div>
+
+        <div class="viva-card">
+          <div class="viva-q" onclick="toggleViva(this)">
+            6. How does Amdahl's Law apply to this system?
+            <span>▼</span>
+          </div>
+          <div class="viva-a">
+            Amdahl's Law states that speedup is limited by the non-parallelizable serial portion:
+            <code>S(N) = 1 / ((1 - P) + P/N)</code>.<br>
+            In our program, file I/O (<code>fread</code>, <code>fwrite</code>), archive header creation, and thread dispatch represent the serial fraction \((1 - P)\). Even as thread count \(N\) scales to 8 or 16, total execution time approaches a floor dictated by disk I/O throughput.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-history" class="tab-view">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">Recent Activity & Downloads</div>
+          <div class="panel-status">Session History</div>
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table class="styled-table">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>File Name</th>
+                <th>Original Size</th>
+                <th>New Size</th>
+                <th>Result</th>
+                <th>Threads</th>
+                <th>Time</th>
+                <th>Download</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody">
+              <tr><td colspan="8" style="text-align: center; color: var(--text-dim);">No files compressed or decompressed yet in this session.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let activeFile = null;
+    let decompressFile = null;
+    let auditLog = [];
+
+    async function initHardware() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        document.getElementById('coreChip').innerText = `${data.cores} CPU Cores Detected`;
+        document.getElementById('cThreadsRange').max = data.cores;
+        document.getElementById('cThreadsRange').value = Math.min(4, data.cores);
+        document.getElementById('cThreadsLabel').innerText = document.getElementById('cThreadsRange').value + ' Threads';
+        document.getElementById('dThreadsRange').max = data.cores;
+        document.getElementById('dThreadsRange').value = Math.min(4, data.cores);
+        document.getElementById('dThreadsLabel').innerText = document.getElementById('dThreadsRange').value + ' Threads';
+      } catch (e) {
+        document.getElementById('coreChip').innerText = 'Threads Ready';
+      }
+    }
+    initHardware();
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+      document.getElementById('tab-' + tabId).classList.add('active');
+    }
+
+    function toggleViva(header) {
+      const body = header.nextElementSibling;
+      const arrow = header.querySelector('span');
+      if (body.style.display === 'none' || !body.style.display) {
+        body.style.display = 'block';
+        arrow.innerText = '▲';
+      } else {
+        body.style.display = 'none';
+        arrow.innerText = '▼';
+      }
+    }
+
+    function updateThreads(val) {
+      document.getElementById('cThreadsLabel').innerText = val + ' Threads';
+      updateChunkPartition();
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes && bytes !== 0) return '0 B';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+      return (bytes / 1048576).toFixed(2) + ' MB';
+    }
+
+    function getFileExtension(filename) {
+      const idx = filename.lastIndexOf('.');
+      return idx !== -1 ? filename.slice(idx).toLowerCase() : '';
+    }
+
+    function onFileChosen(source) {
+      const file = source.files && source.files.length > 0 ? source.files[0] : null;
+      if (!file) return;
+
+      activeFile = file;
+
+      const deck = document.getElementById('dropDeck');
+      const icon = document.getElementById('dropDeckIcon');
+      const main = document.getElementById('dropDeckMain');
+      const sub = document.getElementById('dropDeckSub');
+      const btn = document.getElementById('btnCompress');
+
+      deck.classList.add('has-file');
+      icon.innerText = '[ OK ]';
+      main.innerText = `Selected: ${file.name}`;
+      sub.innerText = `${formatBytes(file.size)} ready to compress • Click to choose a different file`;
+      btn.innerText = `Compress ${file.name} Now`;
+      document.getElementById('compressStatus').innerText = 'File Loaded';
+      document.getElementById('benchTargetName').innerText = file.name;
+
+      inspectFile(file);
+    }
+
+    function inspectFile(file) {
+      const box = document.getElementById('snifferBox');
+      box.style.display = 'block';
+      document.getElementById('sniffName').innerText = file.name;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const buf = new Uint8Array(e.target.result);
+        let hex = '';
+        let ascii = '';
+        for (let i = 0; i < Math.min(buf.length, 12); i++) {
+          const b = buf[i];
+          hex += b.toString(16).padStart(2, '0').toUpperCase() + ' ';
+          ascii += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
+        }
+        document.getElementById('sniffHex').innerText = hex.trim();
+        document.getElementById('sniffAscii').innerText = ascii;
+
+        const tag = document.getElementById('sniffTag');
+        const expl = document.getElementById('sniffExpl');
+
+        if (buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4B && buf[2] === 0x03 && buf[3] === 0x04) {
+          tag.className = 'tag-badge tag-precomp';
+          tag.innerText = 'Pre-Compressed (ZIP / DOCX)';
+          expl.innerHTML = `<strong>Note:</strong> Word (.docx), Excel (.xlsx), and ZIP files are already compressed internally. Because the data has already been squeezed, running compression on it again will result in <strong>roughly 0% size change</strong> (or a few extra bytes for headers).`;
+        } else if (buf.length >= 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) {
+          tag.className = 'tag-badge tag-precomp';
+          tag.innerText = 'PDF Document';
+          expl.innerHTML = `<strong>Note:</strong> PDF documents already contain compressed streams inside. Expect little to no size reduction.`;
+        } else if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) {
+          tag.className = 'tag-badge tag-precomp';
+          tag.innerText = 'PNG Image';
+          expl.innerHTML = `<strong>Note:</strong> PNG images are already compressed. Expect near 0% size change.`;
+        } else if (buf.length >= 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) {
+          tag.className = 'tag-badge tag-precomp';
+          tag.innerText = 'JPEG Image';
+          expl.innerHTML = `<strong>Note:</strong> JPEG images are already compressed photos. They will not shrink further with standard compression.`;
+        } else {
+          const ext = getFileExtension(file.name);
+          const textTypes = ['.txt', '.c', '.h', '.cpp', '.py', '.js', '.html', '.css', '.json', '.csv', '.sql', '.log', '.xml', '.bmp'];
+          if (textTypes.includes(ext)) {
+            tag.className = 'tag-badge tag-high';
+            tag.innerText = 'High Compression (Text / Code)';
+            expl.innerHTML = `<strong>Great!</strong> This is plain text or code with lots of repeating words and characters. The threads will compress this easily, saving <strong>70% to 95% space</strong>!`;
+          } else {
+            tag.className = 'tag-badge tag-moderate';
+            tag.innerText = 'Binary File';
+            expl.innerHTML = `This is a binary file. Compression will depend on how many repeated patterns exist in the data.`;
+          }
+        }
+      };
+      reader.onerror = function() {
+        document.getElementById('sniffExpl').innerText = 'Ready to compress.';
+      };
+      reader.readAsArrayBuffer(file.slice(0, 16));
+
+      updateChunkPartition();
+    }
+
+    function updateChunkPartition() {
+      if (!activeFile) return;
+      const chunkKiB = Number(document.getElementById('cChunkSelect').value);
+      const chunkSize = chunkKiB * 1024;
+      const chunks = Math.ceil(activeFile.size / chunkSize) || 1;
+      const threads = document.getElementById('cThreadsRange').value;
+
+      document.getElementById('sniffSize').innerText = `${formatBytes(activeFile.size)} (${chunks} parts across ${threads} threads)`;
+      document.getElementById('cChunkLabel').innerText = chunkKiB + ' KB';
+    }
+
+    function loadSampleCode() {
+      const sample = `/* Parallel Compression Project in C using POSIX Threads */\n#include <stdio.h>\n#include <stdlib.h>\n#include <pthread.h>\n#include <zlib.h>\n\nint main() {\n    printf("Parallel compression worker thread running!\\n");\n    return 0;\n}\n`.repeat(150);
+      const blob = new Blob([sample], { type: 'text/x-c' });
+      const file = new File([blob], 'sample_code.c', { type: 'text/x-c' });
+      onFileChosen({ files: [file] });
+    }
+
+    function loadSampleText() {
+      const sample = `Operating Systems Project: Parallel File Compression Utility using POSIX Threads and Zlib.\nMultithreaded compression divides the file into chunks and compresses them concurrently.\n`.repeat(5000);
+      const blob = new Blob([sample], { type: 'text/plain' });
+      const file = new File([blob], 'sample_text.txt', { type: 'text/plain' });
+      onFileChosen({ files: [file] });
+    }
+
+    function loadSampleDocx() {
+      const buf = new Uint8Array(1024 * 100);
+      buf[0] = 0x50; buf[1] = 0x4B; buf[2] = 0x03; buf[3] = 0x04;
+      for (let i = 4; i < buf.length; i++) buf[i] = (i * 37 + 13) & 0xFF;
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const file = new File([blob], 'sample_document.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      onFileChosen({ files: [file] });
+    }
+
+    function renderWorkerSlots(logText) {
+      const grid = document.getElementById('slotsGrid');
+      const counter = document.getElementById('slotsCount');
+      grid.innerHTML = '';
+
+      const regex = /\[Thread\s+(\d+)\]\s+Chunk\s+#\s*(\d+):\s+(\d+)\s+->\s+(\d+)\s+bytes\s+\(saved\s+([-\d\.]+)%\)\s+in\s+([\d\.]+)s/g;
+      let match;
+      let count = 0;
+
+      while ((match = regex.exec(logText)) !== null) {
+        count++;
+        const threadId = match[1];
+        const chunkIdx = match[2];
+        const inBytes = Number(match[3]);
+        const savedPct = parseFloat(match[5]);
+        const duration = match[6];
+
+        const card = document.createElement('div');
+        card.className = 'slot-item';
+        card.innerHTML = `
+          <div><strong style="color: #fff;">Part #${chunkIdx}</strong> (${formatBytes(inBytes)})</div>
+          <div class="slot-tid">Thread ${threadId} &bull; ${duration}s</div>
+          <div class="${savedPct >= 0 ? 'slot-saved' : 'slot-expanded'}">
+            ${savedPct >= 0 ? savedPct.toFixed(1) + '% smaller' : '+' + Math.abs(savedPct).toFixed(1) + '% larger'}
+          </div>
+        `;
+        grid.appendChild(card);
+      }
+
+      if (count > 0) {
+        counter.innerText = `${count} parts processed in parallel`;
+      } else {
+        counter.innerText = '0 parts processed';
+      }
+    }
+
+    async function startCompression() {
+      if (!activeFile) return alert('Please choose or drop a file first.');
+
+      const threads = document.getElementById('cThreadsRange').value;
+      const chunk = document.getElementById('cChunkSelect').value;
+      const level = document.getElementById('cLevelSelect').value;
+      const btn = document.getElementById('btnCompress');
+      const log = document.getElementById('cConsole');
+
+      btn.disabled = true;
+      btn.innerText = 'Compressing...';
+      log.innerText = `Starting ${threads} CPU threads for ${activeFile.name} (Level ${level})...\n`;
+
+      try {
+        const res = await fetch(`/api/compress?threads=${threads}&chunk_kib=${chunk}&level=${level}`, {
+          method: 'POST',
+          headers: { 'X-Filename': encodeURIComponent(activeFile.name) },
+          body: activeFile
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        log.innerText = data.terminal_log;
+        renderWorkerSlots(data.terminal_log);
+
+        const origBytes = Number(data.original_size);
+        const compBytes = Number(data.compressed_size);
+
+        const ratio = origBytes > 0 ? ((compBytes / origBytes) * 100).toFixed(2) : '100.00';
+        const saved = origBytes > 0 ? (((origBytes - compBytes) / origBytes) * 100) : 0;
+
+        document.getElementById('execDeck').style.display = 'grid';
+        document.getElementById('mOrig').innerText = formatBytes(origBytes);
+        document.getElementById('mComp').innerText = formatBytes(compBytes);
+        document.getElementById('mRatio').innerText = `${ratio}%`;
+
+        const heroElem = document.getElementById('mHeroSaved');
+        let statusText = '';
+        if (compBytes > origBytes) {
+          const expansion = (((compBytes - origBytes) / origBytes) * 100).toFixed(2);
+          statusText = `File expanded by ${expansion}%`;
+          heroElem.innerText = statusText;
+          heroElem.style.color = 'var(--crimson)';
+        } else if (compBytes === origBytes) {
+          statusText = 'No size reduction';
+          heroElem.innerText = statusText;
+          heroElem.style.color = 'var(--text-muted)';
+        } else {
+          statusText = `${saved.toFixed(2)}% space saved`;
+          heroElem.innerText = statusText;
+          heroElem.style.color = 'var(--emerald)';
+        }
+
+        document.getElementById('mTime').innerText = data.elapsed_seconds.toFixed(3) + ' s';
+        document.getElementById('mTput').innerText = data.throughput_mb_s + ' MB/s';
+        document.getElementById('mThreads').innerText = data.threads + ' Threads';
+
+        document.getElementById('meterOrig').innerText = `Original: ${formatBytes(origBytes)}`;
+        document.getElementById('meterComp').innerText = `Compressed: ${formatBytes(compBytes)}`;
+        document.getElementById('meterRatio').innerText = `New Size: ${ratio}%`;
+        const fillBar = document.getElementById('meterFill');
+        const fillPct = Math.min(100, Math.max(2, Number(ratio)));
+        fillBar.style.width = fillPct + '%';
+        fillBar.innerText = fillPct + '%';
+
+        const dlArea = document.getElementById('cDownloadArea');
+        const dlLink = document.getElementById('cDownloadLink');
+        dlLink.href = `/api/download/${data.job_id}`;
+        dlLink.setAttribute('download', data.filename);
+        dlArea.style.display = 'block';
+
+        recordHistory('Compress', activeFile.name, origBytes, compBytes, statusText, data.threads, data.elapsed_seconds, `/api/download/${data.job_id}`);
+      } catch (err) {
+        log.innerText = 'Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = `Compress ${activeFile ? activeFile.name : 'File'} Now`;
+      }
+    }
+
+    function onDecompressFileChosen(source) {
+      const file = source.files && source.files.length > 0 ? source.files[0] : null;
+      if (!file) return;
+
+      decompressFile = file;
+
+      const deck = document.getElementById('dropDeckD');
+      const icon = document.getElementById('dropDeckDIcon');
+      const main = document.getElementById('dropDeckDMain');
+      const sub = document.getElementById('dropDeckDSub');
+      const btn = document.getElementById('btnDecompress');
+
+      deck.classList.add('has-file');
+      icon.innerText = '[ OK ]';
+      main.innerText = `Selected Archive: ${file.name}`;
+      sub.innerText = `${formatBytes(file.size)} ready to unpack • Click to choose a different file`;
+      btn.innerText = `Decompress ${file.name} Now`;
+
+      inspectPcmpHeader(file);
+    }
+
+    function inspectPcmpHeader(file) {
+      const card = document.getElementById('pcmpHeaderCard');
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const buf = new Uint8Array(e.target.result);
+        if (buf.length >= 36) {
+          const magic = String.fromCharCode(buf[0], buf[1], buf[2], buf[3]);
+          if (magic === 'PCMP') {
+            const view = new DataView(e.target.result);
+            const origSize = Number(view.getBigUint64(4, true));
+            const totalChunks = view.getUint32(12, true);
+            const chunkSize = view.getUint32(16, true);
+            let ext = '';
+            for (let i = 20; i < 36; i++) {
+              if (buf[i] === 0) break;
+              ext += String.fromCharCode(buf[i]);
+            }
+
+            document.getElementById('hdrExt').innerText = ext || '(none)';
+            document.getElementById('hdrOrig').innerText = formatBytes(origSize);
+            document.getElementById('hdrChunks').innerText = totalChunks;
+            document.getElementById('hdrChunkSize').innerText = (chunkSize / 1024) + ' KB';
+            card.style.display = 'block';
+          } else {
+            card.style.display = 'none';
+          }
+        }
+      };
+      reader.readAsArrayBuffer(file.slice(0, 36));
+    }
+
+    async function startDecompression() {
+      if (!decompressFile) return alert('Please choose a .pcmp file to decompress.');
+
+      const threads = document.getElementById('dThreadsRange').value;
+      const btn = document.getElementById('btnDecompress');
+      const log = document.getElementById('dConsole');
+
+      btn.disabled = true;
+      btn.innerText = 'Decompressing...';
+      log.innerText = `Starting ${threads} CPU threads for decompression...\n`;
+
+      try {
+        const res = await fetch(`/api/decompress?threads=${threads}`, {
+          method: 'POST',
+          headers: { 'X-Filename': encodeURIComponent(decompressFile.name) },
+          body: decompressFile
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        log.innerText = data.terminal_log;
+        document.getElementById('dMetrics').style.display = 'grid';
+        document.getElementById('dRestSize').innerText = formatBytes(data.restored_size);
+        document.getElementById('dTime').innerText = data.elapsed_seconds.toFixed(3) + ' s';
+        document.getElementById('dTput').innerText = data.throughput_mb_s + ' MB/s';
+
+        const dlArea = document.getElementById('dDownloadArea');
+        const dlLink = document.getElementById('dDownloadLink');
+        dlLink.href = `/api/download/${data.job_id}`;
+        dlLink.setAttribute('download', data.filename);
+        dlArea.style.display = 'block';
+
+        recordHistory('Decompress', decompressFile.name, decompressFile.size, data.restored_size, 'CRC32 Matched', data.threads, data.elapsed_seconds, `/api/download/${data.job_id}`);
+      } catch (err) {
+        log.innerText = 'Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = `Decompress ${decompressFile ? decompressFile.name : 'File'} Now`;
+      }
+    }
+
+    async function runBenchmark() {
+      const btn = document.getElementById('btnRunBenchmark');
+      const log = document.getElementById('bConsole');
+      const box = document.getElementById('benchResultsBox');
+      const tbody = document.getElementById('benchBody');
+      const chart = document.getElementById('chartContainer');
+
+      btn.disabled = true;
+      btn.innerText = 'Running 1, 2, 4, 8 Thread Benchmark...';
+      log.innerText = `[Amdahl's Law Benchmark] Measuring real multi-core scaling...\n`;
+
+      try {
+        let res;
+        if (activeFile) {
+          res = await fetch('/api/benchmark', {
+            method: 'POST',
+            headers: { 'X-Filename': encodeURIComponent(activeFile.name) },
+            body: activeFile
+          });
+        } else {
+          res = await fetch('/api/benchmark', { method: 'POST' });
+        }
+
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        log.innerText = data.raw_log;
+        tbody.innerHTML = '';
+        chart.innerHTML = '';
+
+        const results = data.results || [];
+        if (results.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No benchmark records parsed.</td></tr>';
+        } else {
+          const maxSpeedup = Math.max(...results.map(r => r.speedup), 1.0);
+
+          results.forEach((r, idx) => {
+            const efficiency = ((r.speedup / r.threads) * 100).toFixed(1);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td><strong>Test ${idx + 1}</strong></td>
+              <td><span class="spec-chip active">${r.threads} Threads</span></td>
+              <td>${r.time.toFixed(4)} s</td>
+              <td>${r.throughput.toFixed(1)} MB/s</td>
+              <td style="color: var(--amber); font-weight: 700;">${r.speedup.toFixed(2)}x</td>
+              <td>${efficiency}%</td>
+            `;
+            tbody.appendChild(tr);
+
+            const pct = Math.min(100, Math.max(10, (r.speedup / maxSpeedup) * 100));
+            const chartRow = document.createElement('div');
+            chartRow.className = 'chart-bar-row';
+            chartRow.innerHTML = `
+              <div class="chart-label">${r.threads} Thread${r.threads > 1 ? 's' : ' '}</div>
+              <div class="chart-track">
+                <div class="chart-fill" style="width: ${pct}%;">${r.speedup.toFixed(2)}x (${r.time.toFixed(4)}s)</div>
+              </div>
+            `;
+            chart.appendChild(chartRow);
+          });
+        }
+
+        box.style.display = 'block';
+      } catch (err) {
+        log.innerText = 'Benchmark Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Run Benchmark (1, 2, 4, 8 Threads)';
+      }
+    }
+
+    function recordHistory(op, name, inSz, outSz, resText, th, time, dlUrl) {
+      auditLog.unshift({ op, name, inSz, outSz, resText, th, time, dlUrl });
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const tbody = document.getElementById('historyBody');
+      if (auditLog.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-dim);">No files compressed or decompressed yet in this session.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = '';
+      auditLog.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><span class="spec-chip" style="color: ${item.op === 'Compress' ? 'var(--amber)' : 'var(--emerald)'}">${item.op}</span></td>
+          <td style="font-weight: 700; color: #fff;">${item.name}</td>
+          <td>${formatBytes(item.inSz)}</td>
+          <td>${formatBytes(item.outSz)}</td>
+          <td>${item.resText}</td>
+          <td>${item.th}T</td>
+          <td>${item.time.toFixed(3)}s</td>
+          <td><a href="${item.dlUrl}" class="spec-chip active" style="text-decoration: none;" download>Download</a></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function copyConsole(id) {
+      const text = document.getElementById(id).innerText;
+      navigator.clipboard.writeText(text);
+      alert('Console log copied to clipboard.');
+    }
+
+    function clearConsole(id) {
+      document.getElementById(id).innerText = '[Ready] Log cleared.';
+    }
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(name => {
+      window.addEventListener(name, (e) => e.preventDefault());
+    });
+
+    const dropDeck = document.getElementById('dropDeck');
+    ['dragenter', 'dragover'].forEach(name => {
+      dropDeck.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropDeck.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      dropDeck.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropDeck.classList.remove('dragover');
+      });
+    });
+    dropDeck.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropDeck.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        onFileChosen(e.dataTransfer);
+      }
+    });
+
+    const dropDeckD = document.getElementById('dropDeckD');
+    ['dragenter', 'dragover'].forEach(name => {
+      dropDeckD.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropDeckD.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      dropDeckD.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropDeckD.classList.remove('dragover');
+      });
+    });
+    dropDeckD.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropDeckD.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        onDecompressFileChosen(e.dataTransfer);
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,24 +1,16 @@
-
-# Compiled executable
-filecompress
-
-# Generated compression and decompression files
+# Temporary uploads and test artifacts
+temp_uploads/
+*.pcmp
 *.fcz
-big.out
-samples/big.txt
-samples/small.txt
-samples/small.out
-samples/small.fcz
-samples/empty.bin
-samples/random.bin
-samples/text.txt
-
-# Backup files
-*.bak
-
-# Object files
-*.o
-
-# Temporary files
 *.tmp
+*.bak
+*.o
+*.obj
 
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE metadata
+.vscode/
+.idea/

@@ -1,21 +1,18 @@
-
 CC = gcc
 CFLAGS = -O2 -Wall -Wextra -std=c11
-THREAD_FLAGS = -pthread
-LDLIBS = -lz
+LIBS = -lz -pthread
 
-SRC = src/main.c src/compressor.c src/decompressor.c \
-      src/file_utils.c src/benchmark.c
-
-TARGET = filecompress
+TARGET = pcompress
 
 all: $(TARGET)
 
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) $(THREAD_FLAGS) -Isrc $(SRC) -o $(TARGET) $(LDLIBS)
+$(TARGET): parallel_compress.c
+	$(CC) $(CFLAGS) parallel_compress.c -o $(TARGET) $(LIBS)
+
+static: parallel_compress.c
+	$(CC) $(CFLAGS) -static parallel_compress.c -o $(TARGET) $(LIBS)
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(TARGET).exe *.o *.pcmp
 
-.PHONY: all clean
-
+.PHONY: all static clean
