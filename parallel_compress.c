@@ -5,49 +5,62 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
-#include <zlib.h>
-#include <pthread.h>
+#include <zlib.h>        /* zlib compression library: deflate/inflate algorithms and CRC32 */
+#include <pthread.h>     /* POSIX Threads: pthread_create, pthread_join for concurrency */
 
+/* Platform-specific headers for CPU core detection */
 #ifdef _WIN32
-#include <windows.h>
+#include <windows.h>     /* Windows API: GetSystemInfo for processor count */
 #else
-#include <unistd.h>
+#include <unistd.h>      /* POSIX API: sysconf(_SC_NPROCESSORS_ONLN) */
 #include <sys/stat.h>
 #endif
 
-#define MAGIC_HEADER        "PCMP"
-#define MAGIC_LEN           4
-#define DEFAULT_CHUNK_SIZE  (1024 * 1024)
-#define MIN_CHUNK_SIZE      4096
-#define MAX_CHUNK_SIZE      (64 * 1024 * 1024)
-#define MAX_THREADS         64
-#define DEFAULT_LEVEL       6
-#define EXT_FIELD_LEN       16
+/* --- PCMP Archive Format & Buffer Constants --- */
+#define MAGIC_HEADER        "PCMP"              /* 4-byte signature identifying PCMP archive files */
+#define MAGIC_LEN           4                   /* Length of magic header */
+#define DEFAULT_CHUNK_SIZE  (1024 * 1024)       /* Default chunk size: 1 MB */
+#define MIN_CHUNK_SIZE      4096                /* Minimum chunk size: 4 KB */
+#define MAX_CHUNK_SIZE      (64 * 1024 * 1024)  /* Maximum chunk size: 64 MB */
+#define MAX_THREADS         64                  /* Maximum worker threads allowed */
+#define DEFAULT_LEVEL       6                   /* Default zlib compression level (1=Fast, 6=Balanced, 9=Max) */
+#define EXT_FIELD_LEN       16                  /* Max length for saved file extension (e.g., ".docx", ".pdf") */
 
+/*
+ * ArchiveHeader (36 bytes packed)
+ * Stored at the very beginning of every .pcmp archive.
+ * Contains all metadata required to reconstruct and verify the original file.
+ */
 #pragma pack(push, 1)
 typedef struct {
-    char magic[MAGIC_LEN];
-    uint64_t original_size;
-    uint32_t total_chunks;
-    uint32_t chunk_size;
-    char original_ext[EXT_FIELD_LEN];
+    char magic[MAGIC_LEN];              /* "PCMP" identifier */
+    uint64_t original_size;             /* Total byte size of uncompressed original file */
+    uint32_t total_chunks;              /* Total number of chunks divided during compression */
+    uint32_t chunk_size;                /* Chunk size in bytes used during compression */
+    char original_ext[EXT_FIELD_LEN];   /* Original file extension (e.g. ".pdf", ".docx", ".txt") */
 } ArchiveHeader;
 #pragma pack(pop)
 
+/*
+ * ThreadTask
+ * Per-worker data structure passed as argument to pthread_create.
+ * Enables lock-free data parallelism: each thread operates exclusively on its own memory buffers.
+ */
 typedef struct {
-    int thread_id;
-    int chunk_index;
-    const uint8_t *in_data;
-    uint32_t in_len;
-    uint8_t *out_data;
-    uint32_t out_cap;
-    uint32_t out_len;
-    uint32_t crc;
-    double elapsed_sec;
-    int success;
-    int level;
+    int thread_id;              /* Worker thread index (0, 1, 2, ...) */
+    int chunk_index;            /* Global chunk index being processed */
+    const uint8_t *in_data;     /* Pointer to raw uncompressed input chunk */
+    uint32_t in_len;            /* Actual byte length of input chunk */
+    uint8_t *out_data;          /* Destination buffer for compressed output */
+    uint32_t out_cap;           /* Maximum capacity of destination buffer */
+    uint32_t out_len;           /* Resulting compressed byte length */
+    uint32_t crc;               /* CRC32 integrity checksum of chunk data */
+    double elapsed_sec;         /* Execution time measured for this chunk */
+    int success;                /* 1 if operation succeeded, 0 on error */
+    int level;                  /* Compression level (1 to 9) */
 } ThreadTask;
 
+/* High-resolution monotonic timer for measuring throughput and latency */
 static double get_time(void)
 {
     struct timespec ts;
@@ -55,6 +68,7 @@ static double get_time(void)
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
+/* Query OS kernel to detect total available hardware CPU cores */
 static int get_cpu_cores(void)
 {
 #ifdef _WIN32
@@ -67,6 +81,7 @@ static int get_cpu_cores(void)
 #endif
 }
 
+/* Extract file extension from input filename to store in archive header */
 static void extract_extension(const char *path, char *out_ext, size_t max_len)
 {
     out_ext[0] = '\0';
@@ -77,11 +92,19 @@ static void extract_extension(const char *path, char *out_ext, size_t max_len)
     }
 }
 
+/*
+ * compress_worker (Executed concurrently by POSIX worker threads)
+ * 1. Computes CRC32 checksum over the uncompressed input chunk.
+ * 2. Compresses the chunk using zlib compress2() at the specified compression level.
+ * 3. Records execution time and sets task->success status.
+ * Note: Runs completely lock-free because each thread owns isolated in/out buffers.
+ */
 static void *compress_worker(void *arg)
 {
     ThreadTask *task = (ThreadTask *)arg;
     double t0 = get_time();
 
+    /* Compute CRC32 checksum before compression for integrity verification */
     task->crc = (uint32_t)crc32(0L, task->in_data, task->in_len);
 
     uLongf dest_cap = task->out_cap;
@@ -99,6 +122,12 @@ static void *compress_worker(void *arg)
     return NULL;
 }
 
+/*
+ * decompress_worker (Executed concurrently by POSIX worker threads)
+ * 1. Decompresses chunk using zlib uncompress().
+ * 2. Computes CRC32 checksum over restored data.
+ * 3. Compares computed checksum against header checksum to guarantee 100% byte integrity.
+ */
 static void *decompress_worker(void *arg)
 {
     ThreadTask *task = (ThreadTask *)arg;
@@ -108,6 +137,7 @@ static void *decompress_worker(void *arg)
     int ret = uncompress(task->out_data, &expected_len, task->in_data, task->in_len);
 
     if (ret == Z_OK && expected_len == task->out_cap) {
+        /* Verify integrity: match recalculated CRC32 with original CRC32 */
         uint32_t computed_crc = (uint32_t)crc32(0L, task->out_data, expected_len);
         if (computed_crc == task->crc) {
             task->out_len = (uint32_t)expected_len;
@@ -125,8 +155,18 @@ static void *decompress_worker(void *arg)
     return NULL;
 }
 
+/*
+ * compress_file (Main Compression Coordinator)
+ * 1. Validates thread count, chunk size, and compression level.
+ * 2. Writes 36-byte ArchiveHeader (magic, original size, total chunks, extension).
+ * 3. Batches chunks across worker threads.
+ * 4. Spawns threads with pthread_create() to compress in parallel.
+ * 5. Uses pthread_join() as a barrier synchronization point.
+ * 6. Sequentially writes compressed chunks and chunk metadata to disk in original order.
+ */
 int compress_file(const char *in_path, const char *out_path, int num_threads, uint32_t chunk_size, int level)
 {
+    /* Sanitize parameters */
     if (num_threads < 1) num_threads = get_cpu_cores();
     if (num_threads > MAX_THREADS) num_threads = MAX_THREADS;
     if (chunk_size < MIN_CHUNK_SIZE) chunk_size = DEFAULT_CHUNK_SIZE;
@@ -139,6 +179,7 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
         return 1;
     }
 
+    /* Determine input file size */
     fseek(fin, 0, SEEK_END);
     int64_t file_size = ftell(fin);
     rewind(fin);
@@ -155,6 +196,7 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
         return 1;
     }
 
+    /* Calculate chunk count */
     uint32_t total_chunks = (uint32_t)(file_size / chunk_size + (file_size % chunk_size != 0));
     if (file_size == 0) total_chunks = 0;
 
@@ -163,6 +205,7 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
     printf("[OS Coordinator] Allocated %d worker threads across %u chunk(s) (chunk: %u KB, level: %d)\n\n",
            num_threads, total_chunks, chunk_size / 1024, level);
 
+    /* Write PCMP Archive Header */
     ArchiveHeader hdr;
     memset(&hdr, 0, sizeof(hdr));
     memcpy(hdr.magic, MAGIC_HEADER, MAGIC_LEN);
@@ -178,6 +221,7 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
         return 1;
     }
 
+    /* Allocate batch processing buffers for threads */
     int batch_size = num_threads;
     if ((uint32_t)batch_size > total_chunks) batch_size = (total_chunks > 0) ? (int)total_chunks : 1;
 
@@ -201,12 +245,14 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
     double t_start = get_time();
     int error_occurred = 0;
 
+    /* Process chunks in parallel batches equal to thread count */
     while (chunk_idx < total_chunks && !error_occurred) {
         int current_batch = batch_size;
         if (chunk_idx + current_batch > total_chunks) {
             current_batch = (int)(total_chunks - chunk_idx);
         }
 
+        /* Read batch of chunks from input disk */
         int read_ok = 1;
         for (int i = 0; i < current_batch; i++) {
             uint32_t len = (remaining_bytes < chunk_size) ? (uint32_t)remaining_bytes : chunk_size;
@@ -222,6 +268,7 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
             }
             remaining_bytes -= len;
 
+            /* Setup per-thread task descriptors */
             tasks[i].thread_id = i;
             tasks[i].chunk_index = chunk_idx + i;
             tasks[i].in_data = src;
@@ -235,6 +282,7 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
 
         if (!read_ok) break;
 
+        /* Fork worker threads to compress chunks concurrently */
         int started = 0;
         for (int i = 0; i < current_batch; i++) {
             int rc = pthread_create(&tids[i], NULL, compress_worker, &tasks[i]);
@@ -246,12 +294,14 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
             started++;
         }
 
+        /* Barrier synchronization: wait for all threads in current batch */
         for (int i = 0; i < started; i++) {
             pthread_join(tids[i], NULL);
         }
 
         if (error_occurred) break;
 
+        /* Write compressed batch sequentially to output archive to prevent race conditions */
         for (int i = 0; i < current_batch; i++) {
             if (!tasks[i].success) {
                 fprintf(stderr, "[Error] Thread %d failed on chunk %d\n", i, tasks[i].chunk_index);
@@ -264,6 +314,7 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
                    100.0 - (100.0 * tasks[i].out_len / tasks[i].in_len),
                    tasks[i].elapsed_sec);
 
+            /* Write chunk header: in_len, out_len, CRC32 checksum, followed by compressed payload */
             fwrite(&tasks[i].in_len, sizeof(uint32_t), 1, fout);
             fwrite(&tasks[i].out_len, sizeof(uint32_t), 1, fout);
             fwrite(&tasks[i].crc, sizeof(uint32_t), 1, fout);
@@ -282,6 +333,7 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
     double total_time = get_time() - t_start;
     double throughput = (total_time > 0) ? (file_size / 1e6 / total_time) : 0;
 
+    /* Display summary report */
     if (!error_occurred) {
         double ratio = (file_size > 0) ? (((double)total_compressed / (double)file_size) * 100.0) : 100.0;
         double saved_pct = (file_size > 0) ? ((((double)file_size - (double)total_compressed) / (double)file_size) * 100.0) : 0.0;
@@ -306,6 +358,7 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
         printf("--------------------------------------------------\n");
     }
 
+    /* Release resources */
     free(in_buf);
     free(out_buf);
     free(tasks);
@@ -320,8 +373,18 @@ int compress_file(const char *in_path, const char *out_path, int num_threads, ui
     return 0;
 }
 
+/*
+ * decompress_file (Main Decompression Coordinator)
+ * 1. Reads and validates the 36-byte ArchiveHeader ("PCMP" magic check).
+ * 2. Allocates decompression batch buffers for worker threads.
+ * 3. Reads chunk headers (in_len, out_len, CRC32) and compressed payloads.
+ * 4. Spawns threads to execute zlib uncompress() and CRC32 verification concurrently.
+ * 5. Joins threads and sequentially writes restored chunks to the output file.
+ * 6. Guarantees byte-for-byte fidelity with the original file.
+ */
 int decompress_file(const char *in_path, const char *out_path, int num_threads)
 {
+    /* Sanitize thread count */
     if (num_threads < 1) num_threads = get_cpu_cores();
     if (num_threads > MAX_THREADS) num_threads = MAX_THREADS;
 
@@ -331,6 +394,7 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
         return 1;
     }
 
+    /* Read and validate archive header */
     ArchiveHeader hdr;
     if (fread(&hdr, sizeof(hdr), 1, fin) != 1) {
         fprintf(stderr, "Error: Failed to read archive header\n");
@@ -348,6 +412,7 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
     uint32_t total_chunks = hdr.total_chunks;
     uint32_t chunk_size = hdr.chunk_size;
 
+    /* Validate header sanity */
     if (chunk_size < MIN_CHUNK_SIZE || chunk_size > MAX_CHUNK_SIZE) {
         fprintf(stderr, "Error: Corrupted archive header (invalid chunk size: %u bytes)\n", chunk_size);
         fclose(fin);
@@ -376,6 +441,7 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
         printf("\n");
     }
 
+    /* Allocate batch processing buffers */
     int batch_size = num_threads;
     if ((uint32_t)batch_size > total_chunks) batch_size = (total_chunks > 0) ? (int)total_chunks : 1;
 
@@ -398,12 +464,14 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
     double t_start = get_time();
     int error_occurred = 0;
 
+    /* Decompress chunks in concurrent batches */
     while (chunk_idx < total_chunks && !error_occurred) {
         int current_batch = batch_size;
         if (chunk_idx + current_batch > total_chunks) {
             current_batch = (int)(total_chunks - chunk_idx);
         }
 
+        /* Read batch of chunk metadata and compressed payloads from archive */
         int read_ok = 1;
         for (int i = 0; i < current_batch; i++) {
             uint32_t orig_len = 0, comp_len = 0, crc = 0;
@@ -437,6 +505,7 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
                 break;
             }
 
+            /* Configure per-thread decompression task */
             tasks[i].thread_id = i;
             tasks[i].chunk_index = chunk_idx + i;
             tasks[i].in_data = src;
@@ -449,6 +518,7 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
 
         if (!read_ok) break;
 
+        /* Spawn worker threads for parallel decompression */
         int started = 0;
         for (int i = 0; i < current_batch; i++) {
             int rc = pthread_create(&tids[i], NULL, decompress_worker, &tasks[i]);
@@ -460,12 +530,14 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
             started++;
         }
 
+        /* Wait for all decompression threads to finish */
         for (int i = 0; i < started; i++) {
             pthread_join(tids[i], NULL);
         }
 
         if (error_occurred) break;
 
+        /* Write verified uncompressed chunks to destination file in sequential order */
         for (int i = 0; i < current_batch; i++) {
             if (!tasks[i].success) {
                 fprintf(stderr, "[Error] Decompression failed on chunk %d\n", tasks[i].chunk_index);
@@ -490,6 +562,7 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
     double total_time = get_time() - t_start;
     double throughput = (total_time > 0) ? (total_restored / 1e6 / total_time) : 0;
 
+    /* Display decompression summary */
     if (!error_occurred && total_restored == original_size) {
         printf("\n--------------------------------------------------\n");
         printf("Decompression Complete:\n");
@@ -500,6 +573,7 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
         printf("--------------------------------------------------\n");
     }
 
+    /* Clean up allocated resources */
     free(in_buf);
     free(out_buf);
     free(tasks);
@@ -514,6 +588,11 @@ int decompress_file(const char *in_path, const char *out_path, int num_threads)
     return 0;
 }
 
+/*
+ * run_benchmark (Amdahl's Law Scaling Analysis)
+ * Runs compression repeatedly on the same file with 1, 2, 4, 8, and N threads.
+ * Measures speedup = (T_1 / T_N) to evaluate concurrency efficiency and I/O bottlenecks.
+ */
 void run_benchmark(const char *in_path)
 {
     int max_cores = get_cpu_cores();
@@ -564,6 +643,13 @@ void run_benchmark(const char *in_path)
     printf("==============================================================\n");
 }
 
+/*
+ * main (CLI Entry Point & Argument Dispatcher)
+ * Parses command-line flags:
+ *   -c: Compress mode
+ *   -d: Decompress mode
+ *   -b: Benchmark mode
+ */
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
@@ -577,6 +663,7 @@ int main(int argc, char *argv[])
 
     const char *mode = argv[1];
 
+    /* Mode -c: Parallel Compression */
     if (strcmp(mode, "-c") == 0) {
         if (argc < 4) {
             fprintf(stderr, "Usage: %s -c <input> <output.pcmp> [threads] [chunk_kib] [level]\n", argv[0]);
@@ -587,6 +674,7 @@ int main(int argc, char *argv[])
         int level = (argc >= 7) ? atoi(argv[6]) : DEFAULT_LEVEL;
         return compress_file(argv[2], argv[3], threads, chunk_kib * 1024, level);
     }
+    /* Mode -d: Parallel Decompression */
     else if (strcmp(mode, "-d") == 0) {
         if (argc < 4) {
             fprintf(stderr, "Usage: %s -d <input.pcmp> <output> [threads]\n", argv[0]);
@@ -595,6 +683,7 @@ int main(int argc, char *argv[])
         int threads = (argc >= 5) ? atoi(argv[4]) : get_cpu_cores();
         return decompress_file(argv[2], argv[3], threads);
     }
+    /* Mode -b: Amdahl's Law Benchmark */
     else if (strcmp(mode, "-b") == 0) {
         if (argc < 3) {
             fprintf(stderr, "Usage: %s -b <input_file>\n", argv[0]);

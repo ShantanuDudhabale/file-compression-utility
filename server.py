@@ -9,13 +9,16 @@ from socketserver import ThreadingMixIn
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Executable name and path resolution (Windows .exe vs Linux ELF binary)
 BINARY_NAME = "pcompress.exe" if sys.platform.startswith("win") else "pcompress"
 BINARY_PATH = os.path.join(BASE_DIR, BINARY_NAME)
 
+# Temporary directory for handling file uploads and decompression targets
 TEMP_DIR = os.path.join(BASE_DIR, "temp_uploads")
 os.makedirs(TEMP_DIR, exist_ok=True)
 DOWNLOAD_CACHE = {}
 
+# Automatic compiler: recompiles C binary if source is newer than existing binary
 def ensure_binary():
     c_source = os.path.join(BASE_DIR, "parallel_compress.c")
     rebuild = False
@@ -33,10 +36,13 @@ def ensure_binary():
         else:
             print(f"[Build] Successfully compiled {BINARY_PATH}!", flush=True)
 
+# Threaded HTTP server handling concurrent web requests
 class ThreadedServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
+# HTTP Request Handler: routes web traffic and bridges to the C pcompress executable
 class RequestHandler(BaseHTTPRequestHandler):
+    # Helper to send JSON responses with appropriate headers
     def send_json(self, data, code=200):
         import json
         body = json.dumps(data).encode("utf-8")
@@ -46,10 +52,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # GET requests: Serve dashboard HTML, hardware CPU status, and file downloads
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
+        # Serve Dashboard Frontend (web/index.html)
         if path in ("/", "/index.html"):
             index_file = os.path.join(BASE_DIR, "web", "index.html")
             if os.path.exists(index_file):
@@ -64,6 +72,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_error(404, "web/index.html not found")
             return
 
+        # System Status API: returns available CPU cores and binary status
         if path == "/api/status":
             self.send_json({
                 "cores": os.cpu_count() or 4,
@@ -73,6 +82,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             })
             return
 
+        # File Download API: streams generated .pcmp or restored files to browser
         if path.startswith("/api/download/"):
             file_id = path.replace("/api/download/", "")
             if file_id in DOWNLOAD_CACHE:
@@ -95,6 +105,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         self.send_error(404, "Not Found")
 
+    # POST requests: Execute compression, decompression, or Amdahl's Law benchmark
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         params = urllib.parse.parse_qs(parsed.query)
@@ -104,6 +115,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         raw_name = self.headers.get("X-Filename", "data.bin")
         filename = urllib.parse.unquote(raw_name)
 
+        # Route 1: Parallel Compression API (/api/compress)
         if path == "/api/compress":
             threads = params.get("threads", [str(os.cpu_count() or 4)])[0]
             chunk_kib = params.get("chunk_kib", ["1024"])[0]
@@ -113,6 +125,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             in_file = os.path.join(TEMP_DIR, f"{job_id}_{filename}")
             out_file = os.path.join(TEMP_DIR, f"{job_id}_{filename}.pcmp")
 
+            # Stream incoming file body to temporary file on disk
             with open(in_file, "wb") as f:
                 rem = content_len
                 while rem > 0:
@@ -121,6 +134,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     f.write(chunk)
                     rem -= len(chunk)
 
+            # Invoke the C pcompress binary with multithreading parameters
             cmd = [BINARY_PATH, "-c", in_file, out_file, str(threads), str(chunk_kib), str(level)]
             proc = subprocess.run(cmd, capture_output=True, text=True)
 
@@ -131,16 +145,19 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": log_output or "Compression failed"}, code=400)
                 return
 
+            # Compute compression ratio and storage saved using actual byte counts
             orig_size = content_len
             comp_size = os.path.getsize(out_file) if os.path.exists(out_file) else 0
             ratio_pct = round((comp_size / orig_size) * 100, 2) if orig_size > 0 else 100.0
             saved_pct = round(((orig_size - comp_size) / orig_size) * 100, 2) if orig_size > 0 else 0.0
 
+            # Extract execution time and throughput from C program standard output
             time_match = re.search(r"Execution Time\s*:\s*([\d\.]+)", log_output)
             tput_match = re.search(r"Throughput\s*:\s*([\d\.]+)", log_output)
             elapsed = float(time_match.group(1)) if time_match else 0.0
             throughput = float(tput_match.group(1)) if tput_match else 0.0
 
+            # Cache output file path for browser download
             DOWNLOAD_CACHE[job_id] = {
                 "path": out_file,
                 "name": f"{filename}.pcmp"
@@ -164,6 +181,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             })
             return
 
+        # Route 2: Parallel Decompression API (/api/decompress)
         if path == "/api/decompress":
             threads = params.get("threads", [str(os.cpu_count() or 4)])[0]
             job_id = str(uuid.uuid4())[:8]
@@ -172,6 +190,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             restored_name = filename[:-5] if filename.lower().endswith(".pcmp") else f"restored_{filename}"
             out_file = os.path.join(TEMP_DIR, f"{job_id}_{restored_name}")
 
+            # Save uploaded .pcmp archive to disk
             with open(in_file, "wb") as f:
                 rem = content_len
                 while rem > 0:
@@ -180,6 +199,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     f.write(chunk)
                     rem -= len(chunk)
 
+            # Invoke C decompressor with multi-worker threads
             cmd = [BINARY_PATH, "-d", in_file, out_file, str(threads)]
             proc = subprocess.run(cmd, capture_output=True, text=True)
             log_output = proc.stdout + "\n" + proc.stderr
@@ -197,9 +217,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             elapsed = float(time_match.group(1)) if time_match else 0.0
             throughput = float(tput_match.group(1)) if tput_match else 0.0
 
+            # Restore original file extension saved in archive header
             if ext_match and not restored_name.endswith(ext_match.group(1)):
                 restored_name += ext_match.group(1)
 
+            # Cache restored file for user download
             DOWNLOAD_CACHE[job_id] = {
                 "path": out_file,
                 "name": restored_name
@@ -219,6 +241,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             })
             return
 
+        # Route 3: Amdahl's Law Benchmark API (/api/benchmark)
         if path == "/api/benchmark":
             job_id = str(uuid.uuid4())[:8]
             if content_len > 0:
@@ -233,6 +256,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             else:
                 bench_file = os.path.join(BASE_DIR, "parallel_compress.c")
 
+            # Execute -b benchmark mode in C binary
             cmd = [BINARY_PATH, "-b", bench_file]
             proc = subprocess.run(cmd, capture_output=True, text=True)
             log_output = proc.stdout
@@ -241,6 +265,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 try: os.remove(bench_file)
                 except Exception: pass
 
+            # Parse thread scalability results: thread count, duration, throughput, speedup
             results = []
             for line in log_output.splitlines():
                 parts = line.strip().split()
@@ -267,6 +292,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+# Server startup entry point
 def main():
     ensure_binary()
     port = 5050
